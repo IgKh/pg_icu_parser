@@ -1,0 +1,70 @@
+CREATE EXTENSION pg_icu_parser;
+SELECT * FROM ts_parse('icu_parser', 'A regular "English" sentence with less than 100 words');
+ tokid |  token   
+-------+----------
+     1 | A
+     3 |  
+     1 | regular
+     3 |  
+     3 | "
+     1 | English
+     3 | "
+     3 |  
+     1 | sentence
+     3 |  
+     1 | with
+     3 |  
+     1 | less
+     3 |  
+     1 | than
+     3 |  
+     2 | 100
+     3 |  
+     1 | words
+(19 rows)
+
+SELECT * FROM ts_parse('icu_parser', 'משפט פשוט בעברית');
+ tokid | token  
+-------+--------
+     1 | משפט
+     3 |  
+     1 | פשוט
+     3 |  
+     1 | בעברית
+(5 rows)
+
+SELECT * FROM ts_parse('icu_parser', 'אתמול נסענו לנתב"ג עם ג''ורג'' הקטן');
+ tokid | token  
+-------+--------
+     1 | אתמול
+     3 |  
+     1 | נסענו
+     3 |  
+     1 | לנתב"ג
+     3 |  
+     1 | עם
+     3 |  
+     1 | ג'ורג'
+     3 |  
+     1 | הקטן
+(11 rows)
+
+SELECT * from ts_parse('icu_parser', '今日もＪＲ東日本お後リヨくださいましてありがとゴザます。');
+ tokid |  token   
+-------+----------
+     5 | 今日
+     5 | も
+     1 | ＪＲ
+     5 | 東日本
+     5 | お
+     5 | 後
+     5 | リヨ
+     5 | くだ
+     5 | さい
+     5 | まして
+     5 | ありがと
+     5 | ゴザ
+     5 | ます
+     3 | 。
+(14 rows)
+

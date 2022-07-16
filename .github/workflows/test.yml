@@ -1,0 +1,46 @@
+name: Build and Test
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [10-bullseye, 11-bullseye, 12-bullseye, 13-bullseye, 14-bullseye]
+
+    runs-on: ubuntu-latest
+    container:
+      image: postgres:${{ matrix.tag }}
+      env:
+        POSTGRES_PASSWORD: something
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y gcc make postgresql-server-dev-${PG_MAJOR} libicu-dev
+
+      - name: Build pg_icu_parser
+        run: make && make install
+
+      - name: Start database
+        run: /usr/local/bin/docker-entrypoint.sh postgres &
+
+      - name: Wait for database up
+        run: until pg_isready --username=postgres; do sleep 1; done
+
+      - name: Run regression tests
+        run: make installcheck REGRESS_OPTS="--user postgres"
+
+      - name: Save regression results
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: regression-${{ matrix.tag }}
+          path: |
+            regression.*
+            results/

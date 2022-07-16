@@ -21,7 +21,7 @@ CREATE OR REPLACE FUNCTION icuparser_lextype(internal)
     AS 'MODULE_PATHNAME', 'icuparser_lextype'
     LANGUAGE C STRICT IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION icuparser_headline(internal)
+CREATE OR REPLACE FUNCTION icuparser_headline(internal, internal, tsquery)
     RETURNS internal
     AS 'MODULE_PATHNAME', 'icuparser_headline'
     LANGUAGE C STRICT IMMUTABLE;
