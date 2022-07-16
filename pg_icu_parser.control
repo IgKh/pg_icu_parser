@@ -1,0 +1,4 @@
+comment = 'full text search parser based on ICU'
+default_version = '1.0'
+module_pathname = '$libdir/pg_icu_parser'
+relocatable = true
