@@ -10,6 +10,7 @@
 #include <postgres.h>
 
 #include <fmgr.h>
+#include <mb/pg_wchar.h>
 #include <tsearch/ts_public.h>
 #include <utils/elog.h>
 #include <utils/guc.h>
@@ -20,6 +21,7 @@
 #endif //USE_ICU
 
 #include <unicode/ubrk.h>
+#include <unicode/utext.h>
 
 //
 // Output Token Categories
@@ -44,6 +46,7 @@ PG_FUNCTION_INFO_V1(icuparser_headline);
 
 typedef struct
 {
+    char*           orig_text;
     UChar*          utext;
     UBreakIterator* iter;
     int32_t         token_start_pos;
@@ -108,7 +111,8 @@ icuparser_start(PG_FUNCTION_ARGS)
 
     ParserState* state;
     char*        locale;
-    int32_t      utext_len;
+    int32_t      converted_len;
+    UText*       ut;
     UErrorCode   rc;
 
     state = (ParserState*)palloc0(sizeof(ParserState));
@@ -118,15 +122,49 @@ icuparser_start(PG_FUNCTION_ARGS)
         locale = "en";
     }
 
-    utext_len = icu_to_uchar(&state->utext, text, text_len);
-
     rc = U_ZERO_ERROR;
-    state->iter = ubrk_open(UBRK_WORD, locale, state->utext, utext_len, &rc);
-    if (U_FAILURE(rc)) {
-        ereport(ERROR,
-				(errmsg("could not create ICU word break iterator for locale %s: %s",
-						locale, u_errorName(rc))));
+    state->orig_text = text;
+    state->utext = NULL;
+
+    if (GetDatabaseEncoding() != PG_UTF8) {
+        converted_len = icu_to_uchar(&state->utext, text, text_len);
+
+        ut = utext_openUChars(NULL, state->utext, converted_len, &rc);
+        if (U_FAILURE(rc)) {
+            ereport(ERROR,
+                    (errmsg("could not load UTF-16 text into ICU UText object: %s",
+                            u_errorName(rc))));
+        }
     }
+    else {
+        ut = utext_openUTF8(NULL, text, text_len, &rc);
+        if (U_FAILURE(rc)) {
+            ereport(ERROR,
+                    (errmsg("could not load UTF-8 text into ICU UText object: %s",
+                            u_errorName(rc))));
+        }
+    }
+
+    state->iter = ubrk_open(UBRK_WORD, locale, NULL, -1, &rc);
+    if (U_FAILURE(rc)) {
+        utext_close(ut);
+        ereport(ERROR,
+                (errmsg("could not create ICU word break iterator for locale %s: %s",
+                        locale, u_errorName(rc))));
+    }
+
+    ubrk_setUText(state->iter, ut, &rc);
+    if (U_FAILURE(rc)) {
+        ubrk_close(state->iter);
+        utext_close(ut);
+        ereport(ERROR,
+                (errmsg("could not load UText into ICU word break iterator for locale %s: %s",
+                        locale, u_errorName(rc))));
+    }
+
+    // The iterator makes a shallow clone of the UText, so there is no need to
+    // keep it around as long as the original text is kept.
+    utext_close(ut);
 
     state->token_start_pos = ubrk_first(state->iter);
     state->token_end_pos = ubrk_next(state->iter);
@@ -166,17 +204,24 @@ icuparser_nexttoken(PG_FUNCTION_ARGS)
         PG_RETURN_INT32(0);
     }
 
-    if (state->curr_token != NULL) {
-        pfree(state->curr_token);
-        state->curr_token = NULL;
+    if (state->utext != NULL) {
+        if (state->curr_token != NULL) {
+            pfree(state->curr_token);
+            state->curr_token = NULL;
+        }
+
+        *out_token_len = icu_from_uchar(
+            &state->curr_token,
+            state->utext + state->token_start_pos,
+            state->token_end_pos - state->token_start_pos);
+
+        *out_token = state->curr_token;
+    }
+    else {
+        *out_token = state->orig_text + state->token_start_pos;
+        *out_token_len = state->token_end_pos - state->token_start_pos;
     }
 
-    *out_token_len = icu_from_uchar(
-        &state->curr_token,
-        state->utext + state->token_start_pos,
-        state->token_end_pos - state->token_start_pos);
-
-    *out_token = state->curr_token;
     token_type = ubrk_getRuleStatus(state->iter);
 
     state->token_start_pos = state->token_end_pos;
@@ -195,7 +240,10 @@ icuparser_end(PG_FUNCTION_ARGS)
     }
 
     ubrk_close(state->iter);
-    pfree(state->utext);
+
+    if (state->utext != NULL) {
+        pfree(state->utext);
+    }
     pfree(state);
 
     PG_RETURN_VOID();
@@ -206,6 +254,6 @@ icuparser_headline(PG_FUNCTION_ARGS)
 {
     // Placeholder to make it easier to implement in the future
     ereport(ERROR,
-		    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("icu_parser does not support headline creation")));
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("icu_parser does not support headline creation")));
 }

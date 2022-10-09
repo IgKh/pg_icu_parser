@@ -1,4 +1,14 @@
 CREATE EXTENSION pg_icu_parser;
+SELECT * FROM ts_parse('icu_parser', NULL);
+ tokid | token 
+-------+-------
+(0 rows)
+
+SELECT * FROM ts_parse('icu_parser', '');
+ tokid | token 
+-------+-------
+(0 rows)
+
 SELECT * FROM ts_parse('icu_parser', 'A regular "English" sentence with less than 100 words');
  tokid |  token   
 -------+----------
