@@ -26,6 +26,8 @@ This will build against and install into the PostgreSQL installation determined 
 $ make install PG_CONFIG=/path/to/pg_config
 ```
 
+The extension is also available in [PGXN](https://pgxn.org/dist/pg_icu_parser/).
+
 ## Usage
 
 To load the extension into a database, execute the following SQL command as a user with suitable permissions:

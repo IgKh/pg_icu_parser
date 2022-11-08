@@ -1,0 +1,43 @@
+{
+    "name": "pg_icu_parser",
+    "abstract": "Full text search parser using ICU boundary analysis",
+    "version": "1.0.0",
+    "maintainer": "Igor Khanin <igor@khanin.biz>",
+    "license": {
+        "mozilla_2_0": "https://www.mozilla.org/en-US/MPL/2.0/"
+    },
+    "provides": {
+        "pg_icu_parser": {
+            "abstract": "Full text search parser using ICU boundary analysis",
+            "file": "pg_icu_parser--1.0.sql",
+            "docfile": "README.md",
+            "version": "1.0.0"
+        }
+    },
+    "prereqs": {
+        "runtime": {
+            "requires": {
+                "PostgreSQL": "10.0.0"
+            }
+        }
+    },
+    "resources": {
+        "repository": {
+            "url": "git://github.com/IgKh/pg_icu_parser.git",
+            "web": "https://github.com/IgKh/pg_icu_parser",
+            "type": "git"
+        },
+        "bugtracker": {
+            "web": "https://github.com/IgKh/pg_icu_parser/issues"
+        }
+    },
+    "generated_by": "Igor Khanin",
+    "meta-spec": {
+        "version": "1.0.0",
+        "url": "https://pgxn.org/meta/spec.txt"
+    },
+    "tags": [
+        "full text search",
+        "icu"
+    ]
+}
