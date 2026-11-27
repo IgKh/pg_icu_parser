@@ -14,7 +14,6 @@
 #include <tsearch/ts_public.h>
 #include <utils/elog.h>
 #include <utils/guc.h>
-#include <utils/pg_locale.h>
 
 #ifndef USE_ICU
 #error Must build against PostgreSQL compiled with ICU support
@@ -47,7 +46,7 @@ PG_FUNCTION_INFO_V1(icuparser_headline);
 typedef struct
 {
     char*           orig_text;
-    UChar*          utext;
+    bool            converted_text;
     UBreakIterator* iter;
     int32_t         token_start_pos;
     int32_t         token_end_pos;
@@ -111,7 +110,6 @@ icuparser_start(PG_FUNCTION_ARGS)
 
     ParserState* state;
     char*        locale;
-    int32_t      converted_len;
     UText*       ut;
     UErrorCode   rc;
 
@@ -123,26 +121,18 @@ icuparser_start(PG_FUNCTION_ARGS)
     }
 
     rc = U_ZERO_ERROR;
-    state->orig_text = text;
-    state->utext = NULL;
-
-    if (GetDatabaseEncoding() != PG_UTF8) {
-        converted_len = icu_to_uchar(&state->utext, text, text_len);
-
-        ut = utext_openUChars(NULL, state->utext, converted_len, &rc);
-        if (U_FAILURE(rc)) {
-            ereport(ERROR,
-                    (errmsg("could not load UTF-16 text into ICU UText object: %s",
-                            u_errorName(rc))));
-        }
+    /* Use public encoding APIs; PG18 no longer exports icu_to/from_uchar. */
+    state->orig_text = pg_server_to_any(text, text_len, PG_UTF8);
+    state->converted_text = (state->orig_text != text);
+    if (state->converted_text) {
+        text_len = strlen(state->orig_text);
     }
-    else {
-        ut = utext_openUTF8(NULL, text, text_len, &rc);
-        if (U_FAILURE(rc)) {
-            ereport(ERROR,
-                    (errmsg("could not load UTF-8 text into ICU UText object: %s",
-                            u_errorName(rc))));
-        }
+
+    ut = utext_openUTF8(NULL, state->orig_text, text_len, &rc);
+    if (U_FAILURE(rc)) {
+        ereport(ERROR,
+                (errmsg("could not load UTF-8 text into ICU UText object: %s",
+                        u_errorName(rc))));
     }
 
     state->iter = ubrk_open(UBRK_WORD, locale, NULL, -1, &rc);
@@ -204,22 +194,23 @@ icuparser_nexttoken(PG_FUNCTION_ARGS)
         PG_RETURN_INT32(0);
     }
 
-    if (state->utext != NULL) {
-        if (state->curr_token != NULL) {
-            pfree(state->curr_token);
-            state->curr_token = NULL;
-        }
-
-        *out_token_len = icu_from_uchar(
-            &state->curr_token,
-            state->utext + state->token_start_pos,
-            state->token_end_pos - state->token_start_pos);
-
-        *out_token = state->curr_token;
+    if (state->curr_token != NULL) {
+        pfree(state->curr_token);
+        state->curr_token = NULL;
     }
-    else {
-        *out_token = state->orig_text + state->token_start_pos;
-        *out_token_len = state->token_end_pos - state->token_start_pos;
+
+    *out_token = state->orig_text + state->token_start_pos;
+    *out_token_len = state->token_end_pos - state->token_start_pos;
+
+    if (state->converted_text) {
+        char* converted = pg_any_to_server(*out_token, *out_token_len, PG_UTF8);
+
+        /* Conversion APIs may return their input; only free owned buffers. */
+        if (converted != *out_token) {
+            state->curr_token = converted;
+            *out_token = converted;
+            *out_token_len = strlen(converted);
+        }
     }
 
     token_type = ubrk_getRuleStatus(state->iter);
@@ -241,8 +232,8 @@ icuparser_end(PG_FUNCTION_ARGS)
 
     ubrk_close(state->iter);
 
-    if (state->utext != NULL) {
-        pfree(state->utext);
+    if (state->converted_text) {
+        pfree(state->orig_text);
     }
     pfree(state);
 
